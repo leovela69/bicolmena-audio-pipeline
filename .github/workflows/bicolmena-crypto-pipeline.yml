@@ -226,7 +226,7 @@ jobs:
           echo "✅ Firma Sigstore Bundle verificada."
       
       - name: Generate SLSA Build Attestation
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         with:
           subject-path: "${{ needs.consolidate-ledger.outputs.snapshot_file }}"
       
