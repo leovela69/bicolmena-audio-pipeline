@@ -61,16 +61,30 @@ def verify(snapshot_path: Path, manifest_path: Path, strict: bool = False):
     
     if strict:
         evidence = snapshot.get("evidence", {})
+        missing_evidence = []
+        mismatched_evidence = []
         for file_path, file_data in evidence.items():
             p = Path(file_path)
             if not p.exists():
-                print(f"  ⚠️ Evidencia ausente en disco: {file_path}")
+                missing_evidence.append(file_path)
                 continue
             ev_sha = sha256_file(p)
             if ev_sha != file_data.get("sha256"):
-                print(f"  ❌ Hash mismatch en {file_path}")
-                sys.exit(1)
-        print(f"  ✅ Evidencias físicas verificadas")
+                mismatched_evidence.append(f"{file_path} (esperado {file_data.get('sha256')[:16]}..., actual {ev_sha[:16]}...)")
+                
+        if missing_evidence:
+            print(f"❌ STRICT VERIFICATION FAILED: Evidencias ausentes en disco:")
+            for m_f in missing_evidence:
+                print(f"   - {m_f}")
+            sys.exit(1)
+            
+        if mismatched_evidence:
+            print(f"❌ STRICT VERIFICATION FAILED: Hash mismatch en evidencias:")
+            for m_f in mismatched_evidence:
+                print(f"   - {m_f}")
+            sys.exit(1)
+            
+        print(f"  ✅ Todas las {len(evidence)} evidencias físicas verificadas en disco")
         
     print("\n🏆 SNAPSHOT VALIDATED (INTEGRITY OK)")
     return True

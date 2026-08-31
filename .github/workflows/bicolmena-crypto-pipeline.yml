@@ -21,12 +21,12 @@ jobs:
     
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           fetch-depth: 0
       
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0a5c61591373683505ea898e09a6ea86ab843b9e # v5.0.0
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -40,7 +40,7 @@ jobs:
         run: |
           pip install -r requirements.txt
       
-      - name: Setup RVC Neural Runtime & Frozen Weights
+      - name: Setup RVC Neural Runtime & Frozen Weights (Hardened Verification)
         run: |
           python scripts/setup_rvc_ci.py
       
@@ -61,7 +61,7 @@ jobs:
           python consolidation/assert_all_pass.py
       
       - name: Upload Test Metrics & Audio Evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
         with:
           name: test-results-and-evidence
           path: |
@@ -86,17 +86,17 @@ jobs:
     
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           fetch-depth: 0
       
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0a5c61591373683505ea898e09a6ea86ab843b9e # v5.0.0
         with:
           python-version: '3.11'
       
       - name: Download Test Results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@c850b08b15ce9b27fce338604f29a7029bc51b5c # v4.1.4
         with:
           name: test-results-and-evidence
       
@@ -139,7 +139,7 @@ jobs:
           echo "release_tag=$TAG" >> $GITHUB_OUTPUT
       
       - name: Upload Consolidated Snapshot Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
         with:
           name: consolidated-snapshot
           path: |
@@ -160,23 +160,24 @@ jobs:
     
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
       
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0a5c61591373683505ea898e09a6ea86ab843b9e # v5.0.0
         with:
           python-version: '3.11'
       
       - name: Download Snapshot Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@c850b08b15ce9b27fce338604f29a7029bc51b5c # v4.1.4
         with:
           name: consolidated-snapshot
       
-      - name: Verify Snapshot Integrity Offline
+      - name: Verify Snapshot Integrity Offline (Strict Mode)
         run: |
           python consolidation/mem_audio_verify.py \
             --snapshot "${{ needs.consolidate-ledger.outputs.snapshot_file }}" \
-            --manifest "${{ needs.consolidate-ledger.outputs.manifest_file }}"
+            --manifest "${{ needs.consolidate-ledger.outputs.manifest_file }}" \
+            --strict
           
           python consolidation/verify_chain.py
 
@@ -194,15 +195,15 @@ jobs:
     
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
       
       - name: Download Snapshot & Evidence
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@c850b08b15ce9b27fce338604f29a7029bc51b5c # v4.1.4
         with:
           name: consolidated-snapshot
       
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@e1523de96ba13273150493011881783008d38275 # v3.7.0
       
       - name: Sign Snapshot with Cosign (Sigstore Bundle Format)
         run: |
@@ -225,7 +226,7 @@ jobs:
           echo "✅ Firma Sigstore Bundle verificada."
       
       - name: Generate SLSA Build Attestation
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@c074443f1a5fb4a48295e8ad8238b4e48d44a98e # v1.4.0
         with:
           subject-path: "${{ needs.consolidate-ledger.outputs.snapshot_file }}"
       
