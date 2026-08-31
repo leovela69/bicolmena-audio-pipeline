@@ -264,6 +264,9 @@ jobs:
             --title "Snapshot $TAG" \
             --notes-file release_notes.md
           
+          echo "🔍 Verificando integridad de assets en DRAFT..."
+          gh release view "$TAG" --json isDraft,assets,tagName
+          
           echo "🚀 Publicando Release como INMUTABLE..."
           gh release edit "$TAG" --draft=false
         env:

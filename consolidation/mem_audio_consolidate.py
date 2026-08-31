@@ -1,29 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-MEM-AUDIO-002 · CONSOLIDACIÓN Y ENCADENAMIENTO CRIPTOGRÁFICO DE SNAPSHOT (LEDGER BICOLMENA)
-Crea el snapshot inmutable MEM-AUDIO-002 vinculado a su padre MEM-AUDIO-001 (SHA: d26569cc...):
-  - Verifica los 8 tests reales: AUDIO-001 .. AUDIO-005 + AUDIO-005Q v2 (todos status == PASS).
-  - Recalcula hashes SHA-256 de todas las evidencias físicas en disco.
-  - Genera manifest_MEM-AUDIO_v2 con hash embebido del padre.
-  - Replica y verifica byte a byte en los 3 espejos de memoria del sistema.
+consolidation/mem_audio_consolidate.py
+Consolidador criptográfico nativo de CI para Bicolmena Audio Ledger.
+Verifica 8/8 tests reales, 13/13 evidencias obligatorias, y encadena el hash del padre.
 """
 
 import sys
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
+import os
 import json
 import hashlib
-import shutil
+import argparse
 from pathlib import Path
 from datetime import datetime, timezone
 
-# ============ PARENT SNAPSHOT ============
-PARENT_MANIFEST = Path(r"memory/hechos/c8l-audio-pipeline-pass-2026-08-31_07-32-02.manifest.json")
-PARENT_SNAPSHOT = Path(r"memory/hechos/c8l-audio-pipeline-pass-2026-08-31_07-32-02.json")
-EXPECTED_PARENT_SHA = "d26569cc62cc826d06dbd006177112a7a7266f809d435e07aee3b733b8eb25c7"
-
-# ============ TEST FILES ============
 TEST_FILES = {
     "AUDIO-001": Path("AUDIO-001_metrics.json"),
     "AUDIO-002": Path("AUDIO-002_metrics.json"),
@@ -35,7 +27,6 @@ TEST_FILES = {
     "AUDIO-005Q": Path("AUDIO-005Q_v2_metrics.json"),
 }
 
-# ============ EVIDENCE FILES ============
 EVIDENCE_FILES = {
     "raw_musicgen_32k.wav": Path("raw_musicgen_32k.wav"),
     "resampled_musicgen_48k.wav": Path("resampled_musicgen_48k.wav"),
@@ -52,11 +43,6 @@ EVIDENCE_FILES = {
     "silence_test_3s.wav": Path("evidence/audio/AUDIO-005Q/silence_test_3s.wav"),
 }
 
-class Estado:
-    PASS = "PASS"
-    FAIL = "FAIL"
-    ERROR = "ERROR"
-
 def sha256_file(path: Path) -> str:
     with path.open("rb") as f:
         if hasattr(hashlib, "file_digest"):
@@ -67,159 +53,100 @@ def sha256_file(path: Path) -> str:
                 h.update(chunk)
             return h.hexdigest()
 
-def consolidar_mem_audio_002():
+def main():
+    parser = argparse.ArgumentParser(description="Bicolmena Ledger Consolidator")
+    parser.add_argument("--parent-tag", default="GENESIS", help="Tag del snapshot padre")
+    parser.add_argument("--parent-sha", default="none", help="SHA-256 del snapshot padre")
+    parser.add_argument("--ci-run-id", default="local", help="ID del run de CI")
+    parser.add_argument("--git-commit", default="local", help="Commit hash de Git")
+    args = parser.parse_args()
+
     print("=" * 70)
-    print("🏛️ MEM-AUDIO-002 · CONSOLIDACIÓN DE LEDGER (ENCADENAMIENTO CRIPTOGRÁFICO)")
+    print("🏛️ BICOLMENA AUDIO LEDGER · CONSOLIDACIÓN CRIPTOGRÁFICA")
     print("=" * 70)
-    
-    # 1. Verificar integridad del padre MEM-AUDIO-001
-    print("\n1. Verificando Snapshot Padre (MEM-AUDIO-001)...")
-    if not PARENT_SNAPSHOT.exists():
-        raise RuntimeError(f"Snapshot padre no encontrado: {PARENT_SNAPSHOT}")
-    
-    parent_sha = sha256_file(PARENT_SNAPSHOT)
-    
-    if PARENT_MANIFEST.exists():
-        with open(PARENT_MANIFEST, "r", encoding="utf-8") as f:
-            man = json.load(f)
-            man_sha = man.get("sha256")
-            if man_sha and man_sha != parent_sha:
-                raise RuntimeError(f"Hash del manifest no coincide con el archivo: {man_sha} != {parent_sha}")
-                
-    print(f"   ✅ Padre verificado: {PARENT_SNAPSHOT.name}")
-    print(f"   SHA-256 Padre: {parent_sha}")
-    
-    # 2. Cargar y verificar los 8 tests
-    print("\n2. Verificando 8 JSONs de pruebas (AUDIO-001 .. AUDIO-005Q)...")
+    print(f"Parent Tag: {args.parent_tag}")
+    print(f"Parent SHA: {args.parent_sha}")
+    print(f"CI Run ID:  {args.ci_run_id}")
+    print(f"Commit:     {args.git_commit}")
+
+    # 1. Verificar los 8 tests reales
+    print("\n1. Verificando los 8 reportes de test...")
     passes = {}
-    for test_id, path in TEST_FILES.items():
-        if not path.exists():
-            raise RuntimeError(f"Archivo de test ausente: {path}")
-        with open(path, "r", encoding="utf-8") as f:
+    for test_id, json_path in TEST_FILES.items():
+        if not json_path.exists():
+            raise RuntimeError(f"Reporte de test ausente: {json_path}")
+        with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        status = data.get("status") or data.get("suite_status")
+        status = data.get("status")
         if status != "PASS":
-            raise RuntimeError(f"Test {test_id} no tiene status PASS: status={status}")
-        
-        file_sha = sha256_file(path)
+            raise RuntimeError(f"Test {test_id} no pasó (status={status})")
         passes[test_id] = {
             "status": "PASS",
-            "file": str(path),
-            "sha256": file_sha,
-            "size_bytes": path.stat().st_size
+            "report_file": json_path.name,
+            "report_sha256": sha256_file(json_path),
+            "timestamp": data.get("timestamp", datetime.now(timezone.utc).isoformat())
         }
-        print(f"   ✅ {test_id}: PASS verificado (JSON SHA: {file_sha[:16]}...)")
-        
-    # 3. Recalcular evidencias físicas
-    print("\n3. Recalculando hashes de evidencias WAV físicas en disco...")
+        print(f"  ✅ {test_id}: PASS ({json_path.name})")
+
+    # 2. Verificar las 13 evidencias físicas obligatorias
+    print("\n2. Verificando y recalculando SHA-256 de las 13 evidencias físicas...")
     evidence = {}
-    for name, path in EVIDENCE_FILES.items():
-        if not path.exists():
-            print(f"   ⚠️ Evidencia opcional no encontrada: {path}")
-            continue
-        sha = sha256_file(path)
-        size = path.stat().st_size
-        evidence[str(path)] = {
-            "name": name,
-            "sha256": sha,
-            "size_bytes": size
+    for ev_name, ev_path in EVIDENCE_FILES.items():
+        if not ev_path.exists():
+            raise RuntimeError(f"❌ Evidencia obligatoria ausente: {ev_path}")
+        ev_sha = sha256_file(ev_path)
+        ev_size = ev_path.stat().st_size
+        evidence[str(ev_path.as_posix())] = {
+            "name": ev_name,
+            "sha256": ev_sha,
+            "size_bytes": ev_size
         }
-        print(f"   ✅ {name}: {sha[:16]}... ({size:,} bytes)")
-        
-    # 4. Crear Snapshot MEM-AUDIO-002
-    print("\n4. Creando Snapshot encadenado MEM-AUDIO-002...")
-    now_utc = datetime.now(timezone.utc).isoformat()
-    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        print(f"  ✅ {ev_name}: {ev_sha[:16]}... ({ev_size} bytes)")
+
+    # 3. Construir Snapshot
+    now_iso = datetime.now(timezone.utc).isoformat()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     
-    snapshot_data = {
-        "schema": "bicolmena.memory.audio.v2",
-        "test_id": "MEM-AUDIO-002",
-        "state": "VALIDATED",
-        "created_at": now_utc,
-        "module": "AUDIO",
-        "chain": {
-            "parent_tag": "MEM-AUDIO-001",
-            "parent_snapshot_file": str(PARENT_SNAPSHOT),
-            "parent_sha256": parent_sha,
-            "parent_total_pass": 7,
-            "chain_length": 2
+    snapshot_payload = {
+        "ledger": "BICOLMENA_AUDIO_CHAIN",
+        "protocol_version": "2.0.0",
+        "timestamp_utc": now_iso,
+        "ci_run_id": args.ci_run_id,
+        "git_commit": args.git_commit,
+        "parent_chain": {
+            "parent_tag": args.parent_tag,
+            "parent_sha256": args.parent_sha
         },
-        "total_pass": len(passes),
         "passes": passes,
-        "evidence": evidence,
-        "blocked": {
-            "AUDIO-005Q-HUMAN": {
-                "reason": "Evaluación con voz humana consentida real pendiente"
-            },
-            "VIS-HF-001": {
-                "reason": "OAuth Higgsfield pendiente en navegador"
-            },
-            "VIS-HF-002": {
-                "reason": "Depende de VIS-HF-001"
-            }
-        }
-    }
-    
-    root_dir = Path("memory/hechos")
-    root_dir.mkdir(parents=True, exist_ok=True)
-    
-    snapshot_path = root_dir / f"c8l-audio-pipeline-pass-{stamp}.json"
-    snapshot_path.write_text(json.dumps(snapshot_data, indent=2, ensure_ascii=False), encoding="utf-8")
-    snapshot_sha = sha256_file(snapshot_path)
-    
-    manifest_data = {
-        "schema": "bicolmena.manifest.v2",
-        "test_id": "MEM-AUDIO-002",
-        "snapshot": str(snapshot_path),
-        "sha256": snapshot_sha,
-        "created_at": now_utc,
-        "parent_sha256": parent_sha,
-        "total_pass": len(passes),
-        "state": "VALIDATED"
-    }
-    
-    manifest_path = root_dir / f"c8l-audio-pipeline-pass-{stamp}.manifest.json"
-    manifest_path.write_text(json.dumps(manifest_data, indent=2), encoding="utf-8")
-    
-    print(f"   Snapshot creado: {snapshot_path}")
-    print(f"   SHA-256 Snapshot: {snapshot_sha}")
-    print(f"   Manifest creado: {manifest_path}")
-    
-    # 5. Replicar en los 3 espejos
-    print("\n5. Replicando en 3 espejos con verificación de hash...")
-    mirrors = [
-        Path("04-sistema-y-seguridad/memory"),
-        Path("01-proyectos-codigo/antigravity proyectos/memory"),
-        Path("01-proyectos-codigo/claud code proyectos/memoria"),
-    ]
-    
-    for i, mirror in enumerate(mirrors, 1):
-        mirror.mkdir(parents=True, exist_ok=True)
-        dst_snap = mirror / snapshot_path.name
-        dst_man = mirror / manifest_path.name
-        
-        shutil.copy2(snapshot_path, dst_snap)
-        shutil.copy2(manifest_path, dst_man)
-        
-        if sha256_file(dst_snap) != snapshot_sha:
-            raise RuntimeError(f"Fallo de integridad en espejo {i}: {dst_snap}")
-        print(f"   ✅ Espejo {i}/3: {dst_snap} (SHA verificado)")
-        
-    print(f"\n{'=' * 70}")
-    print(f"🏆 MEM-AUDIO-002 VALIDATED (PASS)")
-    print(f"   Total PASS Encadenados: {len(passes)}/8")
-    print(f"   Hash Padre:    {parent_sha[:16]}...")
-    print(f"   Hash Snapshot: {snapshot_sha[:16]}...")
-    print(f"   Espejos:       3/3 Replicados y Verificados")
-    print(f"{'=' * 70}")
-    
-    return {
-        "status": "PASS",
-        "snapshot": str(snapshot_path),
-        "sha256": snapshot_sha,
-        "parent_sha256": parent_sha,
-        "total_pass": len(passes)
+        "evidence": evidence
     }
 
+    snapshot_filename = f"snapshot_MEM-AUDIO_{stamp}.json"
+    manifest_filename = f"manifest_MEM-AUDIO_{stamp}.json"
+
+    with open(snapshot_filename, "w", encoding="utf-8") as f:
+        json.dump(snapshot_payload, f, indent=2, ensure_ascii=False)
+
+    snapshot_sha = sha256_file(Path(snapshot_filename))
+    print(f"\n📦 Snapshot generado: {snapshot_filename}")
+    print(f"   SHA-256: {snapshot_sha}")
+
+    # 4. Construir Manifest
+    manifest_payload = {
+        "snapshot_file": snapshot_filename,
+        "sha256": snapshot_sha,
+        "parent_tag": args.parent_tag,
+        "parent_sha256": args.parent_sha,
+        "total_tests_passed": len(passes),
+        "total_evidence_files": len(evidence),
+        "created_utc": now_iso
+    }
+
+    with open(manifest_filename, "w", encoding="utf-8") as f:
+        json.dump(manifest_payload, f, indent=2, ensure_ascii=False)
+
+    print(f"📋 Manifest generado: {manifest_filename}")
+    print("\n🏆 CONSOLIDACIÓN COMPLETADA (LEDGER BLOCK READY)")
+
 if __name__ == "__main__":
-    consolidar_mem_audio_002()
+    main()

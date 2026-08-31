@@ -35,7 +35,9 @@ def descargar_con_progreso(url: str, dest: Path):
         print(f"  ℹ️ Archivo ya presente en disco: {dest.name}")
         return
     print(f"  📥 Descargando {dest.name} desde {url}...")
-    urllib.request.urlretrieve(url, str(dest))
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Bicolmena-CI-Engine)"})
+    with urllib.request.urlopen(req) as resp, open(dest, "wb") as out_f:
+        shutil_copy = out_f.write(resp.read())
 
 def main():
     print("=" * 70)
@@ -78,7 +80,7 @@ def main():
         },
         {
             "name": "default.index",
-            "url": "https://huggingface.co/PhoenixStormJr/RVC-V2-default-voice/resolve/main/default.index",
+            "url": "https://huggingface.co/PhoenixStormJr/RVC-V2-default-voice/resolve/main/added_IVF511_Flat_nprobe_1_default_v2.index",
             "dest": INDICES_DIR / "default.index",
             "sha256": "93e0fbf723992b5ff6a1af3cae4e15f3bbb1dd860880fbd76565be23549aa1b7"
         },
