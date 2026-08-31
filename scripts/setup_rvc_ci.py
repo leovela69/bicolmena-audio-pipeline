@@ -2,7 +2,7 @@
 """
 scripts/setup_rvc_ci.py
 Descarga y configura el runtime RVC v2 y sus pesos congelados para CI (Linux/Windows).
-Verifica criptográficamente los hashes SHA-256 de los pesos descargados contra valores esperados.
+Verifica criptográficamente los hashes SHA-256 de los pesos descargados contra los valores exactos certificados.
 Falla de forma inmediata (RuntimeError / sys.exit(1)) si algún hash no coincide.
 """
 
@@ -74,25 +74,25 @@ def main():
             "name": "default.pth",
             "url": "https://huggingface.co/PhoenixStormJr/RVC-V2-default-voice/resolve/main/default.pth",
             "dest": WEIGHTS_DIR / "default.pth",
-            "sha256": "4b6ecbb3c9fcbb73db0f5f84d6b6e49223702a0a2df337cf9143be0242502390"
+            "sha256": "c9d6b0ac7aa8df91917757894561cd690e5c4b66e97a9f92630c0a7257fbfccc"
         },
         {
             "name": "default.index",
             "url": "https://huggingface.co/PhoenixStormJr/RVC-V2-default-voice/resolve/main/default.index",
             "dest": INDICES_DIR / "default.index",
-            "sha256": "bfbe94719bb44bb7700cf1b702ec4ee8b199047915ec58ea285f543df49c4fbc"
+            "sha256": "93e0fbf723992b5ff6a1af3cae4e15f3bbb1dd860880fbd76565be23549aa1b7"
         },
         {
             "name": "hubert_base.pt",
             "url": "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/hubert_base.pt",
             "dest": HUBERT_DIR / "hubert_base.pt",
-            "sha256": "126ffac1129b008d592b23dd1582236c5357876258ab0b4a45eaec75cbe27ef3"
+            "sha256": "f54b40fd2802423a5643779c4861af1e9ee9c1564dc9d32f54f20b5ffba7db96"
         },
         {
             "name": "rmvpe.pt",
             "url": "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/rmvpe.pt",
             "dest": RMVPE_DIR / "rmvpe.pt",
-            "sha256": "3cb078e38d01115b801a61c28c8ef12ef84a7e9375e4ebf5c9e4eb57a8a1c97a"
+            "sha256": "6d62215f4306e3ca278246188607209f09af3dc77ed4232efdd069798c4ec193"
         }
     ]
         
