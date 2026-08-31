@@ -231,27 +231,29 @@ jobs:
           BUNDLE="${SNAP}.sigstore.json"
           TAR=$(ls evidence_*.tar.gz 2>/dev/null || echo "")
           
-          echo "📦 Creando GitHub Release inmutable: $TAG"
+          echo "## 🏛️ Bicolmena Immutable Ledger Snapshot" > release_notes.md
+          echo "- **Snapshot File:** \`$SNAP\`" >> release_notes.md
+          echo "- **SHA-256:** \`${{ needs.consolidate-ledger.outputs.snapshot_sha }}\`" >> release_notes.md
+          echo "- **Sigstore Bundle:** \`$BUNDLE\`" >> release_notes.md
+          echo "- **CI Run ID:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> release_notes.md
+          echo "- **Git Commit:** \`${{ github.sha }}\`" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### 🔍 Offline Verification with Cosign" >> release_notes.md
+          echo "\`\`\`bash" >> release_notes.md
+          echo "cosign verify-blob \\" >> release_notes.md
+          echo "  --bundle $BUNDLE \\" >> release_notes.md
+          echo "  --certificate-identity \"https://github.com/${{ github.repository }}/.github/workflows/bicolmena-crypto-pipeline.yml@refs/heads/main\" \\" >> release_notes.md
+          echo "  --certificate-oidc-issuer \"https://token.actions.githubusercontent.com\" \\" >> release_notes.md
+          echo "  $SNAP" >> release_notes.md
+          echo "\`\`\`" >> release_notes.md
+          
+          echo "📦 Creando GitHub Release: $TAG"
           gh release create "$TAG" \
             "$SNAP" \
             "$MAN" \
             "$BUNDLE" \
             $TAR \
             --title "Snapshot $TAG" \
-            --notes "## 🏛️ Bicolmena Immutable Ledger Snapshot
-- **Snapshot File:** \`$SNAP\`
-- **SHA-256:** \`${{ needs.consolidate-ledger.outputs.snapshot_sha }}\`
-- **Sigstore Bundle:** \`$BUNDLE\`
-- **CI Run ID:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-- **Git Commit:** \`${{ github.sha }}\`
-
-### 🔍 Verification Command (Offline with Bundle)
-\`\`\`bash
-cosign verify-blob \\
-  --bundle $BUNDLE \\
-  --certificate-identity \"https://github.com/${{ github.repository }}/.github/workflows/bicolmena-crypto-pipeline.yml@refs/heads/main\" \\
-  --certificate-oidc-issuer \"https://token.actions.githubusercontent.com\" \\
-  $SNAP
-\`\`\`"
+            --notes-file release_notes.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
