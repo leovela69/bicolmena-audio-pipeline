@@ -24,7 +24,13 @@ import soundfile as sf
 import psutil
 from pathlib import Path
 
-BASE_REPO = Path(r"01-proyectos-codigo\rvc_runtime\repo")
+candidate_paths = [
+    Path("01-proyectos-codigo/rvc_runtime/repo"),
+    Path("assets/rvc_runtime"),
+    Path("../01-proyectos-codigo/rvc_runtime/repo"),
+]
+BASE_REPO = next((p for p in candidate_paths if p.exists()), Path("assets/rvc_runtime"))
+
 RVC_CLI = str(BASE_REPO / "infer" / "cli.py")
 MODEL_PTH = str(BASE_REPO / "assets" / "weights" / "default.pth")
 MODEL_INDEX = str(BASE_REPO / "assets" / "indices" / "default.index")
@@ -32,6 +38,14 @@ INPUT_WAV = str(BASE_REPO / "voice_guide.wav")
 EVIDENCE_DIR = Path("evidence/audio/AUDIO-004")
 EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_WAV = str(EVIDENCE_DIR / "rvc_native.wav")
+
+# Generar voice_guide.wav si no existe
+if not Path(INPUT_WAV).exists():
+    Path(INPUT_WAV).parent.mkdir(parents=True, exist_ok=True)
+    sr_g = 44100
+    t_g = np.linspace(0, 5.0, int(sr_g * 5.0), endpoint=False)
+    s_g = 0.5 * np.sin(2 * np.pi * 440.0 * t_g)
+    sf.write(INPUT_WAV, s_g.astype(np.float32), sr_g)
 
 F0_METHOD = "rmvpe"
 PITCH = 0

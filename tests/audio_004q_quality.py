@@ -18,7 +18,12 @@ import soundfile as sf
 from pathlib import Path
 
 # ============ CONFIGURACIÓN ============
-INPUT_GUIDE = "voice_guide.wav"          # 44.1kHz sintética
+candidate_guides = [
+    Path("voice_guide.wav"),
+    Path("assets/rvc_runtime/voice_guide.wav"),
+    Path("01-proyectos-codigo/rvc_runtime/repo/voice_guide.wav")
+]
+INPUT_GUIDE = str(next((p for p in candidate_guides if p.exists()), Path("voice_guide.wav")))
 OUTPUT_RVC = "evidence/audio/AUDIO-004/rvc_native.wav"  # 40kHz RVC
 
 # ============ ESTADOS ============

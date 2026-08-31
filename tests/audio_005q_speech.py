@@ -34,9 +34,15 @@ class Estado:
     BLOCKED = "BLOCKED"
     ERROR = "ERROR"
 
-BASE_DIR = Path(r"evidence/audio/AUDIO-005Q")
+BASE_DIR = Path("evidence/audio/AUDIO-005Q")
 BASE_DIR.mkdir(parents=True, exist_ok=True)
-RVC_REPO = Path(r"01-proyectos-codigo\rvc_runtime\repo")
+
+candidate_paths = [
+    Path("01-proyectos-codigo/rvc_runtime/repo"),
+    Path("assets/rvc_runtime"),
+    Path("../01-proyectos-codigo/rvc_runtime/repo"),
+]
+RVC_REPO = next((p for p in candidate_paths if p.exists()), Path("assets/rvc_runtime"))
 
 FRAGMENTS = [
     {"id": "F1", "text": "el cante flamenco requiere alma y precision"},

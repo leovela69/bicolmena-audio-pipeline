@@ -40,6 +40,10 @@ jobs:
         run: |
           pip install -r requirements.txt
       
+      - name: Setup RVC Neural Runtime & Frozen Weights
+        run: |
+          python scripts/setup_rvc_ci.py
+      
       - name: Execute 8 Real Audio Tests (Strict Sequential Execution)
         run: |
           set -euo pipefail
@@ -173,6 +177,8 @@ jobs:
           python consolidation/mem_audio_verify.py \
             --snapshot "${{ needs.consolidate-ledger.outputs.snapshot_file }}" \
             --manifest "${{ needs.consolidate-ledger.outputs.manifest_file }}"
+          
+          python consolidation/verify_chain.py
 
   # =========================================================================
   # JOB 4 · SIGN, ATTEST & PUBLISH (Privileged: id-token, attestations, contents)
