@@ -66,6 +66,9 @@ jobs:
           name: test-results-and-evidence
           path: |
             AUDIO-*_metrics.json
+            raw_musicgen_32k.wav
+            resampled_musicgen_48k.wav
+            neural_flamenco_bolero_master.wav
             evidence/
           retention-days: 1
 
@@ -95,7 +98,7 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Download Test Results
+      - name: Download Test Results & Evidence
         uses: actions/download-artifact@v4
         with:
           name: test-results-and-evidence
@@ -138,6 +141,15 @@ jobs:
           echo "snapshot_sha=$SHA" >> $GITHUB_OUTPUT
           echo "release_tag=$TAG" >> $GITHUB_OUTPUT
       
+      - name: Package Full Evidence Bundle
+        run: |
+          tar -czf "evidence_${{ github.run_id }}.tar.gz" \
+            AUDIO-*_metrics.json \
+            raw_musicgen_32k.wav \
+            resampled_musicgen_48k.wav \
+            neural_flamenco_bolero_master.wav \
+            evidence/
+      
       - name: Upload Consolidated Snapshot Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -167,12 +179,17 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Download Snapshot Artifacts
+      - name: Download Snapshot & Evidence Package
         uses: actions/download-artifact@v4
         with:
           name: consolidated-snapshot
       
-      - name: Verify Snapshot Integrity Offline (Strict Mode)
+      - name: Extract Evidence Bundle
+        run: |
+          TAR=$(ls evidence_*.tar.gz | head -1)
+          tar -xzf "$TAR"
+      
+      - name: Verify Snapshot & Physical Evidence Offline (Strict Mode)
         run: |
           python consolidation/mem_audio_verify.py \
             --snapshot "${{ needs.consolidate-ledger.outputs.snapshot_file }}" \
@@ -230,7 +247,7 @@ jobs:
         with:
           subject-path: "${{ needs.consolidate-ledger.outputs.snapshot_file }}"
       
-      - name: Create Immutable GitHub Release
+      - name: Create and Verify Immutable GitHub Release
         run: |
           TAG="${{ needs.consolidate-ledger.outputs.release_tag }}"
           SNAP="${{ needs.consolidate-ledger.outputs.snapshot_file }}"
@@ -264,8 +281,12 @@ jobs:
             --title "Snapshot $TAG" \
             --notes-file release_notes.md
           
-          echo "🔍 Verificando integridad de assets en DRAFT..."
-          gh release view "$TAG" --json isDraft,assets,tagName
+          echo "🔍 Verificando presencia estricta de assets en DRAFT..."
+          INFO=$(gh release view "$TAG" --json isDraft,assets)
+          echo "$INFO" | jq -e '.isDraft == true'
+          for expected in "$SNAP" "$MAN" "$BUNDLE"; do
+            echo "$INFO" | jq -e --arg n "$expected" '.assets[].name | select(. == $n)' >/dev/null
+          done
           
           echo "🚀 Publicando Release como INMUTABLE..."
           gh release edit "$TAG" --draft=false
