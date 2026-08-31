@@ -1,0 +1,255 @@
+name: Bicolmena Cryptographic Evidence Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # =========================================================================
+  # JOB 1 · RUN ALL REAL TESTS (Least Privilege: contents: read)
+  # =========================================================================
+  test-audio-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      
+      - name: Setup Python 3.11
+        uses: actions/setup-python@0a5c61591373683505ea898e09a6ea86ab843b9e # v5.0.0
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install System Audio Libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg libsndfile1
+      
+      - name: Install Python Dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Execute 8 Real Audio Tests (Strict Sequential Execution)
+        run: |
+          set -euo pipefail
+          python tests/audio_001_dsp_qc.py
+          python tests/audio_002_resampling.py
+          python tests/audio_003_musicgen.py
+          python tests/audio_004a_rvc.py
+          python tests/audio_004q_quality.py
+          python tests/audio_004r_resample_vocal.py
+          python tests/audio_005_integration.py
+          python tests/audio_005q_speech.py
+      
+      - name: Assert All 8 Tests Passed
+        run: |
+          python consolidation/assert_all_pass.py
+      
+      - name: Upload Test Metrics & Audio Evidence
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        with:
+          name: test-results-and-evidence
+          path: |
+            AUDIO-*_metrics.json
+            evidence/
+          retention-days: 1
+
+  # =========================================================================
+  # JOB 2 · CONSOLIDATE LEDGER SNAPSHOT (Least Privilege: contents: read)
+  # =========================================================================
+  consolidate-ledger:
+    needs: [test-audio-pipeline]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      snapshot_file: ${{ steps.create-snapshot.outputs.snapshot_file }}
+      manifest_file: ${{ steps.create-snapshot.outputs.manifest_file }}
+      snapshot_sha: ${{ steps.create-snapshot.outputs.snapshot_sha }}
+      release_tag: ${{ steps.create-snapshot.outputs.release_tag }}
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a6ea86ab843b9e # v5.0.0
+        with:
+          python-version: '3.11'
+      
+      - name: Download Test Results
+        uses: actions/download-artifact@c850b08b15ce9b27fce338604f29a7029bc51b5c # v4.1.4
+        with:
+          name: test-results-and-evidence
+      
+      - name: Fetch Latest Parent Release
+        id: parent
+        run: |
+          LATEST=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+          if [ -n "$LATEST" ]; then
+            echo "parent_tag=$LATEST" >> $GITHUB_OUTPUT
+            gh release download "$LATEST" -p "manifest_*.json" 2>/dev/null || true
+            if [ -f manifest_*.json ]; then
+              echo "parent_sha=$(jq -r '.sha256' manifest_*.json | head -1)" >> $GITHUB_OUTPUT
+            else
+              echo "parent_sha=none" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "parent_tag=GENESIS" >> $GITHUB_OUTPUT
+            echo "parent_sha=none" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build Chained Snapshot & Manifest
+        id: create-snapshot
+        run: |
+          python consolidation/mem_audio_consolidate.py \
+            --parent-tag "${{ steps.parent.outputs.parent_tag }}" \
+            --parent-sha "${{ steps.parent.outputs.parent_sha }}" \
+            --ci-run-id "${{ github.run_id }}" \
+            --git-commit "${{ github.sha }}"
+          
+          SNAP=$(ls snapshot_MEM-AUDIO_*.json | head -1)
+          MAN=$(ls manifest_MEM-AUDIO_*.json | head -1)
+          SHA=$(sha256sum "$SNAP" | awk '{print $1}')
+          TAG="mem-audio-${{ github.run_number }}-$(date +%Y%m%d%H%M%S)"
+          
+          echo "snapshot_file=$SNAP" >> $GITHUB_OUTPUT
+          echo "manifest_file=$MAN" >> $GITHUB_OUTPUT
+          echo "snapshot_sha=$SHA" >> $GITHUB_OUTPUT
+          echo "release_tag=$TAG" >> $GITHUB_OUTPUT
+      
+      - name: Upload Consolidated Snapshot Artifacts
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        with:
+          name: consolidated-snapshot
+          path: |
+            snapshot_MEM-AUDIO_*.json
+            manifest_MEM-AUDIO_*.json
+            evidence_*.tar.gz
+          retention-days: 1
+
+  # =========================================================================
+  # JOB 3 · VERIFY BEFORE SIGNING (Least Privilege: contents: read)
+  # =========================================================================
+  verify-pre-sign:
+    needs: [consolidate-ledger]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      
+      - name: Setup Python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a6ea86ab843b9e # v5.0.0
+        with:
+          python-version: '3.11'
+      
+      - name: Download Snapshot Artifacts
+        uses: actions/download-artifact@c850b08b15ce9b27fce338604f29a7029bc51b5c # v4.1.4
+        with:
+          name: consolidated-snapshot
+      
+      - name: Verify Snapshot Integrity Offline
+        run: |
+          python consolidation/mem_audio_verify.py \
+            --snapshot "${{ needs.consolidate-ledger.outputs.snapshot_file }}" \
+            --manifest "${{ needs.consolidate-ledger.outputs.manifest_file }}"
+
+  # =========================================================================
+  # JOB 4 · SIGN, ATTEST & PUBLISH (Privileged: id-token, attestations, contents)
+  # =========================================================================
+  sign-and-release:
+    needs: [consolidate-ledger, verify-pre-sign]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write       # Para crear el GitHub Release
+      id-token: write       # Requerido para Sigstore OIDC token
+      attestations: write   # Requerido para actions/attest@v4
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      
+      - name: Download Snapshot & Evidence
+        uses: actions/download-artifact@c850b08b15ce9b27fce338604f29a7029bc51b5c # v4.1.4
+        with:
+          name: consolidated-snapshot
+      
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@e1523de96ba13273150493011881783008d38275 # v3.7.0
+      
+      - name: Sign Snapshot with Cosign (Sigstore Bundle Format)
+        run: |
+          SNAP="${{ needs.consolidate-ledger.outputs.snapshot_file }}"
+          BUNDLE="${SNAP}.sigstore.json"
+          
+          echo "🔏 Firmando snapshot en formato Sigstore Bundle..."
+          cosign sign-blob \
+            --yes \
+            --bundle "$BUNDLE" \
+            "$SNAP"
+          
+          echo "🔍 Verificando firma contra identidad estricta de workflow..."
+          cosign verify-blob \
+            --bundle "$BUNDLE" \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/bicolmena-crypto-pipeline.yml@refs/heads/main" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$SNAP"
+          
+          echo "✅ Firma Sigstore Bundle verificada."
+      
+      - name: Generate SLSA Build Attestation
+        uses: actions/attest@8df15ed4deab3a6a90ec4ae5ad19f4410a569769 # v4.0.0
+        with:
+          subject-path: "${{ needs.consolidate-ledger.outputs.snapshot_file }}"
+      
+      - name: Create Immutable GitHub Release
+        run: |
+          TAG="${{ needs.consolidate-ledger.outputs.release_tag }}"
+          SNAP="${{ needs.consolidate-ledger.outputs.snapshot_file }}"
+          MAN="${{ needs.consolidate-ledger.outputs.manifest_file }}"
+          BUNDLE="${SNAP}.sigstore.json"
+          TAR=$(ls evidence_*.tar.gz 2>/dev/null || echo "")
+          
+          echo "📦 Creando GitHub Release inmutable: $TAG"
+          gh release create "$TAG" \
+            "$SNAP" \
+            "$MAN" \
+            "$BUNDLE" \
+            $TAR \
+            --title "Snapshot $TAG" \
+            --notes "## 🏛️ Bicolmena Immutable Ledger Snapshot
+- **Snapshot File:** \`$SNAP\`
+- **SHA-256:** \`${{ needs.consolidate-ledger.outputs.snapshot_sha }}\`
+- **Sigstore Bundle:** \`$BUNDLE\`
+- **CI Run ID:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+- **Git Commit:** \`${{ github.sha }}\`
+
+### 🔍 Verification Command (Offline with Bundle)
+\`\`\`bash
+cosign verify-blob \\
+  --bundle $BUNDLE \\
+  --certificate-identity \"https://github.com/${{ github.repository }}/.github/workflows/bicolmena-crypto-pipeline.yml@refs/heads/main\" \\
+  --certificate-oidc-issuer \"https://token.actions.githubusercontent.com\" \\
+  $SNAP
+\`\`\`"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
