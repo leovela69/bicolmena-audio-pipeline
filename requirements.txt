@@ -10,4 +10,7 @@ jiwer>=4.0.0
 librosa>=0.10.1
 praat-parselmouth>=0.4.3
 torch>=2.1.0
+torchaudio>=2.1.0
 transformers>=4.36.0
+ffmpeg-python>=0.2.0
+faiss-cpu>=1.7.4
